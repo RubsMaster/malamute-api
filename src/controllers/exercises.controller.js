@@ -13,8 +13,8 @@ export const getAllExercises = async (req, res) => {
     eq.name AS equipment_name,
     wt.name AS type_name
   FROM exercises e
-  LEFT JOIN musculargroup bp ON e.bodypart::INTEGER = bp.id
-  LEFT JOIN equipment eq ON e.equipment::INTEGER = eq.id
+  LEFT JOIN musculargroup bp ON e.bodypart = bp.id
+  LEFT JOIN equipment eq ON e.equipment = eq.id
   LEFT JOIN workouttype wt ON e.type = wt.id
   WHERE e.name ILIKE $3
   ORDER BY e.id
@@ -50,7 +50,14 @@ WHERE e.name ILIKE $1
 export const getExerciseByID = async (req, res) => {
   const { id } = req.params;
   try {
-    const exercise = await db.query("SELECT * FROM exercises WHERE id = $1", [id]);
+    
+    const exercise = await db.query(`
+      SELECT * 
+      FROM exercises e
+      LEFT JOIN musculargroup bp ON e.bodypart = bp.id
+      LEFT JOIN equipment eq ON e.equipment = eq.id
+      LEFT JOIN workouttype wt ON e.type = wt.id
+      WHERE id = $1`, [id]);
     res.status(200).json(exercise.rows[0]);
   } catch (error) {
     res.status(500).json({ error: "Error fetching exercise" });

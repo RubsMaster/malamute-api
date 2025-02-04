@@ -56,3 +56,24 @@ export const getExerciseByID = async (req, res) => {
     res.status(500).json({ error: "Error fetching exercise" });
   }
 }
+export const updateExercise = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, bodypart, equipment, level } = req.body;
+    
+    const query = `
+      UPDATE exercises 
+      SET name = $1, description = $2, bodypart = $3, equipment = $4, level = $5
+      WHERE id = $6
+      RETURNING *
+    `;
+    
+    const values = [name, description, bodypart, equipment, level, id];
+    const result = await db.query(query, values);
+    
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error("Error updating exercise:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};

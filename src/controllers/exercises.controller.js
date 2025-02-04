@@ -100,3 +100,32 @@ export const updateExercise = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+// musculargroup.controller.js
+export const getAllMuscularGroups = async (req, res) => {
+  try {
+    const result = await db.query("SELECT id, name FROM musculargroup");
+    res.status(200).json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching muscular groups" });
+  }
+};
+
+// equipment.controller.js
+export const getAllEquipment = async (req, res) => {
+  try {
+    const result = await db.query("SELECT id, name FROM equipment");
+    res.status(200).json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching equipment" });
+  }
+};
+
+// workouttype.controller.js
+export const getAllWorkoutTypes = async (req, res) => {
+  try {
+    const result = await db.query("SELECT id, name FROM workouttype");
+    res.status(200).json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching workout types" });
+  }
+};

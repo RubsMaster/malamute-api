@@ -52,12 +52,12 @@ export const getExerciseByID = async (req, res) => {
   try {
     
     const exercise = await db.query(`
-      SELECT * 
+      SELECT
+        e.*,  
+        bp.name AS bodypart_name,
+        eq.name AS equipment_name,
+        wt.name AS type_name
       FROM exercises e
-      e.*,
-      bp.name AS bodypart_name,
-      eq.name AS equipment_name,
-      wt.name AS type_name
       LEFT JOIN musculargroup bp ON e.bodypart = bp.id
       LEFT JOIN equipment eq ON e.equipment = eq.id
       LEFT JOIN workouttype wt ON e.type = wt.id

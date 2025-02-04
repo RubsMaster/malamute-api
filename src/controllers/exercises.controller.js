@@ -49,8 +49,13 @@ WHERE e.name ILIKE $1
 
 export const getExerciseByID = async (req, res) => {
   const { id } = req.params;
+
+  // Validar que el ID sea un número
+  if (isNaN(id)) {
+    return res.status(400).json({ error: "Invalid exercise ID" });
+  }
+
   try {
-    
     const exercise = await db.query(`
       SELECT
         e.*,  
@@ -61,12 +66,19 @@ export const getExerciseByID = async (req, res) => {
       LEFT JOIN musculargroup bp ON e.bodypart = bp.id
       LEFT JOIN equipment eq ON e.equipment = eq.id
       LEFT JOIN workouttype wt ON e.type = wt.id
-      WHERE id = $1`, [id]);
+      WHERE e.id = $1`, [id]);
+
+    // Verificar si se encontró el ejercicio
+    if (exercise.rows.length === 0) {
+      return res.status(404).json({ error: "Exercise not found" });
+    }
+
     res.status(200).json(exercise.rows[0]);
   } catch (error) {
-    res.status(500).json({ error: "Error fetching exercise" });
+    console.error("Error fetching exercise:", error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
-}
+};
 export const updateExercise = async (req, res) => {
   try {
     const { id } = req.params;

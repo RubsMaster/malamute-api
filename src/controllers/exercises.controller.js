@@ -46,3 +46,13 @@ WHERE e.name ILIKE $1
     res.status(500).send("Internal Server Error");
   }
 };
+
+export const getExerciseByID = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const exercise = await db.query("SELECT * FROM exercises WHERE id = $1", [id]);
+    res.status(200).json(exercise.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching exercise" });
+  }
+}

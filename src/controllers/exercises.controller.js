@@ -1,131 +1,143 @@
-import db from "../config/db.js";
-export const getAllExercises = async (req, res) => {
+import escapeStringRegexp from "escape-string-regexp";
+import Exercise from "../models/exercise.schema.js";
+
+export const uploadBulkExercises = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const search = req.query.search || "";
-    const offset = (page - 1) * limit;
-
-    const dataQuery = `
-  SELECT 
-    e.*,
-    bp.name AS bodypart_name,
-    eq.name AS equipment_name,
-    wt.name AS type_name
-  FROM exercises e
-  LEFT JOIN musculargroup bp ON e.bodypart = bp.id
-  LEFT JOIN equipment eq ON e.equipment = eq.id
-  LEFT JOIN workouttype wt ON e.type = wt.id
-  WHERE e.name ILIKE $3
-  ORDER BY e.id
-  LIMIT $1 OFFSET $2
-`;
-
-const countQuery = `
-SELECT COUNT(*) 
-FROM exercises e
-WHERE e.name ILIKE $1
-`;
-
-    const searchTerm = `%${search}%`;
-
-    const [dataResult, countResult] = await Promise.all([
-      db.query(dataQuery, [limit, offset, searchTerm]),
-      db.query(countQuery, [searchTerm]),
-    ]);
-
-    const total = parseInt(countResult.rows[0].count);
-    const totalPages = Math.ceil(total / limit);
-
-    res.status(200).json({
-      data: dataResult.rows,
-      pagination: { page, limit, total, totalPages },
-    });
-  } catch (error) {
-    console.error("Error fetching exercises:", error);
-    res.status(500).send("Internal Server Error");
-  }
-};
-
-export const getExerciseByID = async (req, res) => {
-  const { id } = req.params;
-
-  // Validar que el ID sea un número
-  if (isNaN(id)) {
-    return res.status(400).json({ error: "Invalid exercise ID" });
-  }
-
-  try {
-    const exercise = await db.query(`
-      SELECT
-        e.*,  
-        bp.name AS bodypart_name,
-        eq.name AS equipment_name,
-        wt.name AS type_name
-      FROM exercises e
-      LEFT JOIN musculargroup bp ON e.bodypart = bp.id
-      LEFT JOIN equipment eq ON e.equipment = eq.id
-      LEFT JOIN workouttype wt ON e.type = wt.id
-      WHERE e.id = $1`, [id]);
-
-    // Verificar si se encontró el ejercicio
-    if (exercise.rows.length === 0) {
-      return res.status(404).json({ error: "Exercise not found" });
+    if (!Array.isArray(req.body)) {
+      return res.status(400).json({
+        success: false,
+        error: "Format invalid. Must be an exercise array",
+      });
     }
 
-    res.status(200).json(exercise.rows[0]);
-  } catch (error) {
-    console.error("Error fetching exercise:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-};
-export const updateExercise = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, description, bodypart, equipment, level } = req.body;
-    
-    const query = `
-      UPDATE exercises 
-      SET name = $1, description = $2, bodypart = $3, equipment = $4, level = $5
-      WHERE id = $6
-      RETURNING *
-    `;
-    
-    const values = [name, description, bodypart, equipment, level, id];
-    const result = await db.query(query, values);
-    
-    res.status(200).json(result.rows[0]);
-  } catch (error) {
-    console.error("Error updating exercise:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-};
-// musculargroup.controller.js
-export const getAllMuscularGroups = async (req, res) => {
-  try {
-    const result = await db.query("SELECT id, name FROM musculargroup");
-    res.status(200).json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: "Error fetching muscular groups" });
+    const incomingTitles = req.body.map((ex) => ex.Title.trim());
+
+    const existingExercises = await Exercise.find({
+      Title: { $in: incomingTitles },
+    });
+
+    if (existingExercises.length > 0) {
+      const duplicateTitles = existingExercises.map((ex) => ex.Title);
+      const uniqueDuplicates = [...new Set(duplicateTitles)];
+
+      return res.status(409).json({
+        success: false,
+        error: "Duplicated titles",
+        duplicates: uniqueDuplicates,
+        message: "Rename exercises before upload",
+      });
+    }
+
+    const result = await Exercise.insertMany(req.body);
+
+    res.status(201).json({
+      success: true,
+      insertedCount: result.length,
+      message: `${result.length} exercises inserted`,
+    });
+
+  } catch (err) {
+    if (err.code === 11000) {
+      const duplicatedTitle = err.keyValue?.Title || "Unknown";
+      return res.status(409).json({
+        success: false,
+        error: "Exercise title conflict",
+        message: `The exercise '${duplicatedTitle}' is already registered`,
+      });
+    }
+
+    if (err.name === "ValidationError") {
+      const errors = Object.values(err.errors).map((e) => e.message);
+      return res.status(400).json({
+        success: false,
+        error: "Error de validación",
+        details: errors,
+      });
+    }
+
+    console.error("Error en uploadBulkExercises:", err);
+    res.status(500).json({
+      success: false,
+      error: "Error interno del servidor",
+    });
   }
 };
 
-// equipment.controller.js
-export const getAllEquipment = async (req, res) => {
-  try {
-    const result = await db.query("SELECT id, name FROM equipment");
-    res.status(200).json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: "Error fetching equipment" });
+export const getAllExercises = async (req, res) => {
+  try{
+    const result = await Exercise.find();
+    res.send(result)
+  } catch (e) {
+    res.send(e);
   }
-};
+}
 
-// workouttype.controller.js
-export const getAllWorkoutTypes = async (req, res) => {
+
+export const getExerciseByName = async (req, res) => {
   try {
-    const result = await db.query("SELECT id, name FROM workouttype");
-    res.status(200).json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: "Error fetching workout types" });
+    // 1. Validar parámetro de búsqueda
+    const searchTerm = req.params.name?.trim();
+    if (!searchTerm || searchTerm.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'El término de búsqueda debe tener al menos 2 caracteres'
+      });
+    }
+
+    // 2. Sanitizar y crear expresión regular
+    const sanitizedTerm = escapeStringRegexp(searchTerm);
+    const nameRegex = new RegExp(`^${sanitizedTerm}`, 'i');
+
+    // 3. Configurar paginación
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // 4. Buscar en la base de datos con paginación
+    const [exercises, total] = await Promise.all([
+      Exercise.find({ Title: nameRegex })
+        .sort({ Title: 1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Exercise.countDocuments({ Title: nameRegex })
+    ]);
+
+    // 5. Calcular metadatos de paginación
+    const totalPages = Math.ceil(total / limit);
+    const hasMore = page < totalPages;
+
+    // 6. Formatear respuesta
+    const response = {
+      success: true,
+      pagination: {
+        totalResults: total,
+        currentPage: page,
+        resultsPerPage: limit,
+        totalPages,
+        hasMore
+      },
+      count: exercises.length,
+      data: exercises
+    };
+
+    // 7. Manejar caso sin resultados
+    if (exercises.length === 0) {
+      return res.status(404).json({
+        ...response,
+        success: false,
+        message: 'No se encontraron ejercicios con ese nombre'
+      });
+    }
+
+    res.json(response);
+
+  } catch (err) {
+    console.error('Error en getExerciseByName:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Error interno del servidor',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };

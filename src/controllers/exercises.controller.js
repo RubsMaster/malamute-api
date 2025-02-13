@@ -137,7 +137,7 @@ export const getExerciseByName = async (req, res) => {
 
 export const getAllBodyparts =  async ( req, res) => {
 const response = await Exercise.distinct("BodyPart")
-const formattedBodyparts = bodyparts.map((bp) => ({ name: bp }));
+const formattedBodyparts = response.map((bp) => ({ name: bp }));
 res.json(formattedBodyparts);
 }
 

@@ -75,7 +75,6 @@ export const getAllExercises = async (req, res) => {
 
 export const getExerciseByName = async (req, res) => {
   try {
-    // 1. Validar parámetro de búsqueda
     const searchTerm = req.params.name?.trim();
     if (!searchTerm || searchTerm.length < 2) {
       return res.status(400).json({
@@ -84,16 +83,13 @@ export const getExerciseByName = async (req, res) => {
       });
     }
 
-    // 2. Sanitizar y crear expresión regular
     const sanitizedTerm = escapeStringRegexp(searchTerm);
     const nameRegex = new RegExp(`^${sanitizedTerm}`, 'i');
 
-    // 3. Configurar paginación
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // 4. Buscar en la base de datos con paginación
     const [exercises, total] = await Promise.all([
       Exercise.find({ Title: nameRegex })
         .sort({ Title: 1 })
@@ -103,11 +99,9 @@ export const getExerciseByName = async (req, res) => {
       Exercise.countDocuments({ Title: nameRegex })
     ]);
 
-    // 5. Calcular metadatos de paginación
     const totalPages = Math.ceil(total / limit);
     const hasMore = page < totalPages;
 
-    // 6. Formatear respuesta
     const response = {
       success: true,
       pagination: {
@@ -121,7 +115,6 @@ export const getExerciseByName = async (req, res) => {
       data: exercises
     };
 
-    // 7. Manejar caso sin resultados
     if (exercises.length === 0) {
       return res.status(404).json({
         ...response,
@@ -141,3 +134,31 @@ export const getExerciseByName = async (req, res) => {
     });
   }
 };
+
+export const getAllBodyparts =  async ( req, res) => {
+const response = await Exercise.distinct("BodyPart")
+res.json(response);
+}
+
+export const getAllExercisesByBodypart = async (req, res) => {
+  const searchTerm = req.params.name?.trim();
+    if (!searchTerm || searchTerm.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'El término de búsqueda debe tener al menos 2 caracteres'
+      });
+    }
+
+    const sanitizedTerm = escapeStringRegexp(searchTerm);
+    const nameRegex = new RegExp(`^${sanitizedTerm}`, 'i');
+
+    const exercises = await Exercise.find({ BodyPart: nameRegex }).sort({ Title: 1 })
+
+    const response = {
+      success: true,
+      count: exercises.length,
+      data: exercises
+    };
+
+    res.json(response)
+}

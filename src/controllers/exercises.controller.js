@@ -1,5 +1,6 @@
 import escapeStringRegexp from "escape-string-regexp";
 import Image from "../models/image.schema.js";
+import Exercise from "../models/exercise.schema.js";
 import fs from 'fs/promises';
 export const uploadBulkExercises = async (req, res) => {
   try {

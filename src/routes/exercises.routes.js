@@ -8,7 +8,7 @@ router.get('/exercise/name/:name', getExerciseByName)
 router.get('/exercise/_id/:_id', getExerciseByID)
 router.get('/exercises/bodypart/:name', getAllExercisesByBodypart)
 router.get('/bodyparts', getAllBodyparts)
-router.get('/:name', getExercisesImagesByBodypart);
+router.get('/getImagesByBodypart/:name', getExercisesImagesByBodypart);
 router.post('/uploadBulkExercises', uploadBulkExercises);
 router.post('/uploadBulkImages', uploadImages)
 

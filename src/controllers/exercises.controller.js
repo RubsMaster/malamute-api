@@ -3,30 +3,30 @@ import Exercise from "../models/exercise.schema.js";
 
 export const getAllExercisesWithImages = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const skip = (page - 1) * limit;
 
     const aggregationPipeline = [
+      { $match: { Title: { $exists: true, $ne: "" } } },
       {
         $lookup: {
           from: 'images',
           let: { 
             normalizedTitle: { 
-              $trim: { input: { $toLower: "$Title" } 
+              $trim: { input: { $toLower: "$Title" } } 
             } 
-          }
-        },
+          },
           pipeline: [
-            {
-              $match: { // ¡Etapa $match agregada!
-                $expr: {
+            { 
+              $match: { 
+                $expr: { 
                   $eq: [
-                    { $trim: { input: { $toLower: "$Title" } }},
+                    { $trim: { input: { $toLower: "$Title" } } },
                     "$$normalizedTitle"
                   ]
                 }
-              }
+              } 
             }
           ],
           as: 'images'
@@ -55,11 +55,11 @@ export const getAllExercisesWithImages = async (req, res) => {
           }
         }
       },
-      {
-        $sort: {
-          hasImages: -1,
-          Title: 1
-        }
+      { 
+        $sort: { 
+          hasImages: -1, 
+          Title: 1 
+        } 
       },
       { $skip: skip },
       { $limit: limit }
@@ -67,7 +67,7 @@ export const getAllExercisesWithImages = async (req, res) => {
 
     const [exercises, total] = await Promise.all([
       Exercise.aggregate(aggregationPipeline),
-      Exercise.countDocuments()
+      Exercise.countDocuments({ Title: { $exists: true, $ne: "" } })
     ]);
 
     const totalPages = Math.ceil(total / limit);
@@ -85,19 +85,22 @@ export const getAllExercisesWithImages = async (req, res) => {
       },
       data: exercises.map(exercise => ({
         ...exercise,
-        Title: exercise.Title.trim()
+        Title: exercise.Title?.trim() || ""
       }))
     });
 
   } catch (error) {
-    console.error('Error en getAllExercisesWithImages:', error);
+    console.error('Error:', error);
     res.status(500).json({
       success: false,
       error: 'Error al obtener ejercicios',
-      details: process.env.NODE_ENV === 'development' ? {
-        message: error.message,
-        stack: error.stack
-      } : undefined
+      ...(process.env.NODE_ENV === 'development' && {
+        details: {
+          message: error.message,
+          stack: error.stack,
+          query: req.query
+        }
+      })
     });
   }
 };

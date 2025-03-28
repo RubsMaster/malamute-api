@@ -1,5 +1,4 @@
 import escapeStringRegexp from "escape-string-regexp";
-import Image from "../models/image.schema.js";
 import Exercise from "../models/exercise.schema.js";
 
 export const getAllExercisesWithImages = async (req, res) => {
@@ -11,10 +10,26 @@ export const getAllExercisesWithImages = async (req, res) => {
     const aggregationPipeline = [
       {
         $lookup: {
-          from: 'images',        // Nombre de la colección (case-sensitive)
-          localField: '_id',     // Campo en Exercise
-          foreignField: 'exercise', // Campo en Image
-          as: 'images'           // Alias para el array resultante
+          from: 'images',
+          let: { 
+            normalizedTitle: { 
+              $trim: { input: { $toLower: "$Title" } 
+            } 
+          }
+        },
+          pipeline: [
+            {
+              $match: { // ¡Etapa $match agregada!
+                $expr: {
+                  $eq: [
+                    { $trim: { input: { $toLower: "$Title" } }},
+                    "$$normalizedTitle"
+                  ]
+                }
+              }
+            }
+          ],
+          as: 'images'
         }
       },
       {
@@ -26,9 +41,9 @@ export const getAllExercisesWithImages = async (req, res) => {
           Equipment: 1,
           Level: 1,
           Rating: 1,
-          hasImages: { $gt: [{ $size: "$images" }, 0] }, // Campo calculado
+          hasImages: { $gt: [{ $size: "$images" }, 0] },
           images: {
-            $map: {              // Optimiza el formato de las imágenes
+            $map: {
               input: "$images",
               as: "img",
               in: {
@@ -38,6 +53,12 @@ export const getAllExercisesWithImages = async (req, res) => {
               }
             }
           }
+        }
+      },
+      {
+        $sort: {
+          hasImages: -1,
+          Title: 1
         }
       },
       { $skip: skip },
@@ -62,7 +83,10 @@ export const getAllExercisesWithImages = async (req, res) => {
         totalPages,
         hasMore
       },
-      data: exercises
+      data: exercises.map(exercise => ({
+        ...exercise,
+        Title: exercise.Title.trim()
+      }))
     });
 
   } catch (error) {
@@ -70,7 +94,10 @@ export const getAllExercisesWithImages = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Error al obtener ejercicios',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: process.env.NODE_ENV === 'development' ? {
+        message: error.message,
+        stack: error.stack
+      } : undefined
     });
   }
 };
@@ -160,56 +187,6 @@ export const getAllExercisesByBodypart = async (req, res) => {
     };
 
     res.json(response)
-};
-export const getExercisesImagesByBodypart = async (req, res) => {
-  const searchTerm = req.params.name?.trim();
-  
-  if (!searchTerm || searchTerm.length < 2) {
-    return res.status(400).json({
-      success: false,
-      error: 'El término de búsqueda debe tener al menos 2 caracteres'
-    });
-  }
-
-  try {
-    const sanitizedTerm = escapeStringRegexp(searchTerm);
-    const bodypartRegex = new RegExp(`^${sanitizedTerm}`, 'i');
-
-    const exercises = await Exercise.find({ 
-      BodyPart: bodypartRegex 
-    }).select('Title -_id');
-
-    if (exercises.length === 0) {
-      return res.json({
-        success: true,
-        count: 0,
-        data: []
-      });
-    }
-
-    const exerciseTitles = [...new Set(exercises.map(e => e.Title))];
-
-    const images = await Image.find({
-      Title: { $in: exerciseTitles }
-    }).select('Title Src -_id');
-
-    const response = {
-      success: true,
-      count: images.length,
-      data: images.map(img => ({
-        exercise: img.Title,
-        imageUrl: img.Src
-      }))
-    };
-
-    res.json(response);
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Error en la búsqueda: ' + error.message
-    });
-  }
 };
 export const getExerciseByID = async (req, res) => {
   const _id = req.params._id?.trim();

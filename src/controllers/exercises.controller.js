@@ -1,130 +1,86 @@
 import escapeStringRegexp from "escape-string-regexp";
 import Image from "../models/image.schema.js";
 import Exercise from "../models/exercise.schema.js";
-import fs from 'fs/promises';
-export const uploadBulkExercises = async (req, res) => {
+
+export const getAllExercisesWithImages = async (req, res) => {
   try {
-    if (!Array.isArray(req.body)) {
-      return res.status(400).json({
-        success: false,
-        error: "Format invalid. Must be an exercise array",
-      });
-    }
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
-    const incomingTitles = req.body.map((ex) => ex.Title.trim());
+    const aggregationPipeline = [
+      {
+        $lookup: {
+          from: 'images',        // Nombre de la colección (case-sensitive)
+          localField: '_id',     // Campo en Exercise
+          foreignField: 'exercise', // Campo en Image
+          as: 'images'           // Alias para el array resultante
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          Title: 1,
+          Type: 1,
+          BodyPart: 1,
+          Equipment: 1,
+          Level: 1,
+          Rating: 1,
+          hasImages: { $gt: [{ $size: "$images" }, 0] }, // Campo calculado
+          images: {
+            $map: {              // Optimiza el formato de las imágenes
+              input: "$images",
+              as: "img",
+              in: {
+                Title: "$$img.Title",
+                Src: "$$img.Src",
+                _id: "$$img._id"
+              }
+            }
+          }
+        }
+      },
+      { $skip: skip },
+      { $limit: limit }
+    ];
 
-    const existingExercises = await Exercise.find({
-      Title: { $in: incomingTitles },
-    });
+    const [exercises, total] = await Promise.all([
+      Exercise.aggregate(aggregationPipeline),
+      Exercise.countDocuments()
+    ]);
 
-    if (existingExercises.length > 0) {
-      const duplicateTitles = existingExercises.map((ex) => ex.Title);
-      const uniqueDuplicates = [...new Set(duplicateTitles)];
+    const totalPages = Math.ceil(total / limit);
+    const hasMore = page < totalPages;
 
-      return res.status(409).json({
-        success: false,
-        error: "Duplicated titles",
-        duplicates: uniqueDuplicates,
-        message: "Rename exercises before upload",
-      });
-    }
-    const result = await Exercise.insertMany(req.body);
-
-    res.status(201).json({
+    res.json({
       success: true,
-      insertedCount: result.length,
-      message: `${result.length} exercises inserted`,
+      count: exercises.length,
+      totalExercises: total,
+      pagination: {
+        currentPage: page,
+        resultsPerPage: limit,
+        totalPages,
+        hasMore
+      },
+      data: exercises
     });
-
-  } catch (err) {
-    if (err.code === 11000) {
-      const duplicatedTitle = err.keyValue?.Title || "Unknown";
-      return res.status(409).json({
-        success: false,
-        error: "Exercise title conflict",
-        message: `The exercise '${duplicatedTitle}' is already registered`,
-      });
-    }
-
-    if (err.name === "ValidationError") {
-      const errors = Object.values(err.errors).map((e) => e.message);
-      return res.status(400).json({
-        success: false,
-        error: "Error de validación",
-        details: errors,
-      });
-    }
-
-    console.error("Error en uploadBulkExercises:", err);
-    res.status(500).json({
-      success: false,
-      error: "Error interno del servidor",
-    });
-  }
-};
-
-export const uploadImages = async () => {
-  try {
-    // Leer y procesar archivo
-    const rawData = await fs.readFile('csvjson.json', 'utf-8');
-    const images = JSON.parse(rawData);
-    const formattedImages = images.map(image => ({
-      Title: image.title,
-      Src: image.src
-    }));
-    const result = await Image.insertMany(formattedImages, {
-      ordered: false,
-      rawResult: true // Para obtener metadatos de la operación
-    }).catch(() => ({}));
-
-    console.log('✅ Insertados:', result);
-    
-    process.exit(0);
 
   } catch (error) {
-    
-
-    console.error('\n⛔ ERROR CRÍTICO:', error.message);
-    process.exit(1);
-  }
-};
-
-// Función mejorada de manejo de errores
-const handleUploadError = (error, res) => {
-  console.error('⚠️ Error detallado:', error);
-  
-  if (error.name === 'ValidationError') {
-    const errors = Object.values(error.errors).map(err => err.message);
-    return res.status(400).json({
+    console.error('Error en getAllExercisesWithImages:', error);
+    res.status(500).json({
       success: false,
-      message: 'Error de validación',
-      errors
+      error: 'Error al obtener ejercicios',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
-
-  res.status(500).json({
-    success: false,
-    message: 'Error interno del servidor',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
-  });
 };
-export const getAllExercises = async (req, res) => {
-  try{
-    const result = await Exercise.find();
-    res.send(result)
-  } catch (e) {
-    res.send(e);
-  }
-}
-
-
 export const getExerciseByName = async (req, res) => {
   try {
     const searchTerm = req.params.name?.trim();
     if (!searchTerm || searchTerm.length < 2) {
       return res.status(400).json({
         success: false,
-        error: 'El término de búsqueda debe tener al menos 2 caracteres'
+        error: 'El término de búsqueda debe tener al menos 2 caracteres',
       });
     }
 
@@ -169,7 +125,6 @@ export const getExerciseByName = async (req, res) => {
     }
 
     res.json(response);
-
   } catch (err) {
     console.error('Error en getExerciseByName:', err);
     res.status(500).json({
@@ -179,13 +134,11 @@ export const getExerciseByName = async (req, res) => {
     });
   }
 };
-
 export const getAllBodyparts =  async ( req, res) => {
 const response = await Exercise.distinct("BodyPart")
 const formattedBodyparts = response.map((bp) => ({ name: bp }));
 res.json(formattedBodyparts);
-}
-
+};
 export const getAllExercisesByBodypart = async (req, res) => {
   const searchTerm = req.params.name?.trim();
     if (!searchTerm || searchTerm.length < 2) {
@@ -207,7 +160,7 @@ export const getAllExercisesByBodypart = async (req, res) => {
     };
 
     res.json(response)
-}
+};
 export const getExercisesImagesByBodypart = async (req, res) => {
   const searchTerm = req.params.name?.trim();
   
@@ -222,10 +175,9 @@ export const getExercisesImagesByBodypart = async (req, res) => {
     const sanitizedTerm = escapeStringRegexp(searchTerm);
     const bodypartRegex = new RegExp(`^${sanitizedTerm}`, 'i');
 
-    // 1. Buscar ejercicios por BodyPart
     const exercises = await Exercise.find({ 
       BodyPart: bodypartRegex 
-    }).select('Title -_id'); // Solo necesitamos los títulos
+    }).select('Title -_id');
 
     if (exercises.length === 0) {
       return res.json({
@@ -235,15 +187,12 @@ export const getExercisesImagesByBodypart = async (req, res) => {
       });
     }
 
-    // 2. Extraer títulos únicos
     const exerciseTitles = [...new Set(exercises.map(e => e.Title))];
 
-    // 3. Buscar imágenes que coincidan con los títulos
     const images = await Image.find({
       Title: { $in: exerciseTitles }
-    }).select('Title Src -_id'); // Solo campos necesarios
+    }).select('Title Src -_id');
 
-    // 4. Mapear resultados
     const response = {
       success: true,
       count: images.length,
@@ -278,4 +227,4 @@ export const getExerciseByID = async (req, res) => {
       data: exercises
     };
 res.send(response)
-}
+};

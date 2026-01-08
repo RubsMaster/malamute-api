@@ -1,3 +1,4 @@
+import fs from 'fs';
 import escapeStringRegexp from "escape-string-regexp";
 import Exercise from "../models/exercise.schema.js";
 
@@ -207,4 +208,72 @@ export const getExerciseByID = async (req, res) => {
       data: exercises
     };
 res.send(response)
+};
+
+export const uploadBulkExercises = async (req, res) => {
+  try {
+    // 1. Leer el archivo de ejercicios únicos
+    const rawData = fs.readFileSync('unique_exercises.json');
+    const uniqueExercises = JSON.parse(rawData);
+
+
+    // 3. Insertar los documentos validando duplicados
+    const results = [];
+    let insertedCount = 0;
+    let duplicateCount = 0;
+
+    for (const exercise of uniqueExercises) {
+      try {
+        // Crear documento con validación de esquema
+        const newExercise = new Exercise(exercise);
+        
+        // Guardar con manejo de error de duplicado
+        const savedExercise = await newExercise.save();
+        results.push({
+          success: true,
+          id: savedExercise._id,
+          title: savedExercise.Title
+        });
+        insertedCount++;
+      } catch (error) {
+        if (error.code === 11000) { // Error de duplicado
+          duplicateCount++;
+          results.push({
+            success: false,
+            title: exercise.Title,
+            error: `Título duplicado: ${exercise.Title}`
+          });
+        } else { // Error de validación
+          results.push({
+            success: false,
+            title: exercise.Title,
+            error: error.message
+          });
+        }
+      }
+    }
+
+    // 4. Generar reporte
+    const report = {
+      totalReceived: uniqueExercises.length,
+      insertedCount,
+      duplicateCount,
+      validationErrors: results.filter(r => !r.success && !r.error.includes('duplicado')).length,
+      details: results
+    };
+
+    // 5. Opcional: Guardar reporte en archivo
+    fs.writeFileSync('upload_report.json', JSON.stringify(report, null, 2));
+
+    res.status(200).json({
+      message: 'Carga completada',
+      report
+    });
+  } catch (error) {
+    console.error('Error general:', error);
+    res.status(500).json({
+      message: 'Error en el proceso de carga',
+      error: error.message
+    });
+  }
 };
